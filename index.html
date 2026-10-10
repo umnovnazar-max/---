@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Реалистичные Онлайн Шашки</title>
+    <script src="https://unpkg.com/peerjs@1.5.1/dist/peerjs.min.js"></script>
+    <style>
+        :root {
+            --board-border: #2c1608;
+            --wood-light: #e6c28f;
+            --wood-dark: #5c3018;
+            --highlight: rgba(255, 215, 0, 0.5);
+            --piece-red: #c0392b;
+            --piece-black: #2c3e50;
+        }
+
+        * {
+            box-sizing: border-box;
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            user-select: none;
+        }
+
+        body {
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: #121212;
+            color: #fff;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            overflow: hidden;
+            touch-action: manipulation;
+        }
+
+        .graveyard {
+            display: flex;
+            width: 90vw;
+            max-width: 560px;
+            height: 50px;
+            background: rgba(0,0,0,0.4);
+            border-radius: 8px;
+            margin: 8px 0;
+            padding: 5px 15px;
+            align-items: center;
+            justify-content: flex-start;
+            gap: -10px;
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.8);
+        }
+
+        .graveyard .piece {
+            position: relative;
+            width: 36px;
+            height: 36px;
+            margin-left: -12px;
+            transform: scale(0.85);
+            cursor: default;
+        }
+        .graveyard .piece:first-child { margin-left: 0; }
+
+        #game-area {
+            position: relative;
+            width: 90vw;
+            height: 90vw;
+            max-width: 560px;
+            max-height: 560px;
+        }
+
+        #board {
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            grid-template-rows: repeat(8, 1fr);
+            width: 100%;
+            height: 100%;
+            border: 10px solid var(--board-border);
+            border-radius: 8px;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.9), inset 0 0 15px rgba(0,0,0,0.8);
+            background-color: var(--board-border);
+            position: relative;
+        }
+
+        .cell {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+        }
+
+        .cell.light {
+            background: linear-gradient(135deg, #e6c28f 0%, #c49d63 100%);
+        }
+
+        .cell.dark {
+            background: linear-gradient(135deg, #5c3018 0%, #3e1b09 100%);
+        }
+
+        .cell.highlight::after {
+            content: '';
+            position: absolute;
+            width: 35%;
+            height: 35%;
+            background-color: #2ecc71;
+            border-radius: 50%;
+            box-shadow: 0 0 10px #2ecc71;
+            pointer-events: none;
+            animation: pulse 1.2s infinite ease-in-out;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(0.8); opacity: 0.6; }
+            50% { transform: scale(1.2); opacity: 1; }
+            100% { transform: scale(0.8); opacity: 0.6; }
+        }
+
+        /* Выравнивание и круглые 3D шашки */
+        .piece {
+            width: 82%;
+            height: 82%;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 22px;
+            position: relative;
+            z-index: 10;
+            transition: transform 0.25s ease-out, box-shadow 0.25s ease-out;
+            aspect-ratio: 1 / 1;
+        }
+
+        .piece::before {
+            content: '';
+position: absolute;
+            width: 72%;
+            height: 72%;
+            border-radius: 50%;
+            border: 2px dashed rgba(255, 255, 255, 0.15);
+        }
+
+        .piece.red {
+            background: radial-gradient(circle at 35% 35%, #e74c3c, var(--piece-red) 70%, #781e13);
+            box-shadow: 0 5px 8px rgba(0,0,0,0.6), inset 0 2px 4px rgba(255,255,255,0.4), inset 0 -3px 5px rgba(0,0,0,0.6);
+        }
+
+        .piece.black {
+            background: radial-gradient(circle at 35% 35%, #4a6572, var(--piece-black) 70%, #111a24);
+            box-shadow: 0 5px 8px rgba(0,0,0,0.6), inset 0 2px 4px rgba(255,255,255,0.3), inset 0 -3px 5px rgba(0,0,0,0.8);
+        }
+
+        .piece:hover {
+            transform: scale(1.05);
+        }
+
+        .piece.selected {
+            transform: scale(1.15);
+            box-shadow: 0 8px 16px rgba(0,0,0,0.8), 0 0 12px #f1c40f, inset 0 2px 4px rgba(255,255,255,0.5);
+            z-index: 20;
+        }
+
+        .piece.king::after {
+            content: '👑';
+            font-size: 18px;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.8);
+            line-height: 1;
+        }
+
+        #menu-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(6px);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            border-radius: 4px;
+            z-index: 100;
+        }
+
+        .menu-box {
+            background: #222;
+            padding: 25px;
+            border-radius: 12px;
+            text-align: center;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.9);
+            width: 85%;
+            max-width: 320px;
+            border: 1px solid #333;
+        }
+
+        .menu-box h2 { margin: 0 0 15px 0; color: #e6c28f; font-size: 22px; }
+
+        input, button {
+            width: 100%;
+            padding: 12px;
+            margin: 6px 0;
+            font-size: 16px;
+            border-radius: 6px;
+            border: none;
+            outline: none;
+        }
+
+        input {
+            text-align: center;
+            background: #111;
+            color: #fff;
+            border: 1px solid #444;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        button {
+            background: linear-gradient(135deg, #27ae60, #2ea043);
+            color: white;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.2s, transform 0.1s;
+        }
+        
+        button:hover { background: linear-gradient(135deg, #2ecc71, #27ae60); }
+        button:active { transform: scale(0.98); }
+
+        #status-bar {
+            width: 90vw;
+            max-width: 560px;
+            text-align: center;
+            padding: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            background: #1e1e1e;
+            border-radius: 8px;
+            margin-top: 10px;
+            color: #e6c28f;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+            border: 1px solid #2a2a2a;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="top-graveyard" class="graveyard"></div>
+
+    <div id="game-area">
+        <div id="board"></div>
+        
+        <div id="menu-overlay">
+            <div class="menu-box">
+                <h2>Онлайн Шашки</h2>
+                <button id="btnCreate">Создать новую игру</button>
+                <div style="margin: 12px 0; color: #777; font-size: 14px;">— ИЛИ —</div>
+                <input type="text" id="joinId" placeholder="Код комнаты" maxlength="6">
+                <button id="btnJoin">Подключиться</button>
+                <p id="menuError" style="color: #e74c3c; font-size: 13px; margin: 8px 0 0 0;"></p>
+            </div>
+        </div>
+    </div>
+
+    <div id="bottom-graveyard" class="graveyard"></div>
+    <div id="status-bar">Создайте игру или подключитесь по коду</div>
+
+    <script>
+let peer = null;
+        let conn = null;
+        let myColor = null; 
+        let currentTurn = 'black'; // 'black' ходит первыми
+        let mustJumpPiece = null; 
+
+        // 0-пусто, 1-черная, 2-красная, 3-черная дамка, 4-красная дамка
+        let board = [];
+        let selectedCell = null;
+        let validMoves = []; 
+
+        let capturedRed = 0;
+        let capturedBlack = 0;
+
+        const uiMenu = document.getElementById('menu-overlay');
+        const boardEl = document.getElementById('board');
+        const statusEl = document.getElementById('status-bar');
+        const topGraveyard = document.getElementById('top-graveyard');
+        const bottomGraveyard = document.getElementById('bottom-graveyard');
+
+        function initEmptyBoard() {
+            board = Array(8).fill().map(() => Array(8).fill(0));
+            for(let r = 0; r < 8; r++) {
+                for(let c = 0; c < 8; c++) {
+                    if((r + c) % 2 !== 0) {
+                        if(r < 3) board[r][c] = 2; // Красные
+                        else if(r > 4) board[r][c] = 1; // Черные
+                    }
+                }
+            }
+            drawBoard();
+        }
+
+        // --- Сетевая логика ---
+        document.getElementById('btnCreate').addEventListener('click', () => {
+            const roomId = Math.random().toString(36).substring(2, 7).toUpperCase();
+            initPeer(roomId, true);
+        });
+
+        document.getElementById('btnJoin').addEventListener('click', () => {
+            const id = document.getElementById('joinId').value.trim().toUpperCase();
+            if(id.length >= 4) initPeer(id, false);
+            else document.getElementById('menuError').innerText = "Введите корректный код!";
+        });
+
+        function initPeer(id, isHost) {
+            uiMenu.querySelector('.menu-box').innerHTML = `<h2>Подключение...</h2><p>Код комнаты: <b style="color:#2ecc71; font-size: 20px;">${id}</b></p><p style="font-size:13px; color:#aaa;">Передайте код второму игроку</p>`;
+            
+            peer = isHost ? new Peer(id) : new Peer();
+
+            peer.on('open', (assignedId) => {
+                if(isHost) {
+                    statusEl.innerText = `Ожидание противника... Код: ${id}`;
+                    myColor = 'black';
+                } else {
+                    statusEl.innerText = `Подключение к комнате ${id}...`;
+                    myColor = 'red';
+                    conn = peer.connect(id);
+                    setupConnection();
+                }
+            });
+
+            peer.on('connection', (connection) => {
+                if(isHost) {
+                    conn = connection;
+                    setupConnection();
+                    startGameHost();
+                }
+            });
+
+            peer.on('error', (err) => {
+                document.getElementById('menuError').innerText = 'Ошибка соединения или ID занят!';
+                console.error(err);
+            });
+        }
+
+        function setupConnection() {
+            conn.on('data', (data) => {
+                if(data.type === 'sync') {
+                    board = data.board;
+                    capturedRed = data.capRed;
+                    capturedBlack = data.capBlack;
+                    currentTurn = data.turn;
+                    mustJumpPiece = data.mustJump;
+                    
+                    if(uiMenu.style.display !== 'none') {
+                        uiMenu.style.display = 'none';
+                    }
+
+                    updateStatus();
+                    updateGraveyards();
+                    drawBoard();
+                    checkLoseCondition();
+                }
+            });
+            conn.on('close', () => {
+                statusEl.innerText = 'Противник отключился.';
+            });
+        }
+
+        function startGameHost() {
+            uiMenu.style.display = 'none';
+            currentTurn = 'black';
+            updateStatus();
+            drawBoard();
+            syncState();
+        }
+function syncState() {
+            if(conn && conn.open) {
+                conn.send({
+                    type: 'sync',
+                    board: board,
+                    capRed: capturedRed,
+                    capBlack: capturedBlack,
+                    turn: currentTurn,
+                    mustJump: mustJumpPiece
+                });
+            }
+        }
+
+        function updateStatus() {
+            if(currentTurn === myColor) {
+                statusEl.innerText = 'Ваш ход!';
+            } else {
+                statusEl.innerText = 'Ход противника...';
+            }
+        }
+
+        // --- Логика отрисовки ---
+        function drawBoard() {
+            boardEl.innerHTML = '';
+            const flip = (myColor === 'red'); 
+
+            for(let row = 0; row < 8; row++) {
+                for(let col = 0; col < 8; col++) {
+                    const r = flip ? 7 - row : row;
+                    const c = flip ? 7 - col : col;
+
+                    const cell = document.createElement('div');
+                    cell.className = `cell ${(r + c) % 2 === 0 ? 'light' : 'dark'}`;
+                    
+                    if(validMoves.find(m => m.r === r && m.c === c)) {
+                        cell.classList.add('highlight');
+                    }
+
+                    if(board[r][c] !== 0) {
+                        const piece = document.createElement('div');
+                        piece.className = 'piece';
+                        if(board[r][c] === 1 || board[r][c] === 3) piece.classList.add('black');
+                        if(board[r][c] === 2 || board[r][c] === 4) piece.classList.add('red');
+                        if(board[r][c] > 2) piece.classList.add('king');
+
+                        if(selectedCell && selectedCell.r === r && selectedCell.c === c) {
+                            piece.classList.add('selected');
+                        }
+
+                        cell.appendChild(piece);
+                    }
+
+                    cell.addEventListener('click', () => handleCellClick(r, c));
+                    boardEl.appendChild(cell);
+                }
+            }
+        }
+
+        function updateGraveyards() {
+            topGraveyard.innerHTML = '';
+            bottomGraveyard.innerHTML = '';
+            
+            const myCaps = (myColor === 'black') ? capturedRed : capturedBlack;
+            const oppCaps = (myColor === 'black') ? capturedBlack : capturedRed;
+
+            for(let i = 0; i < myCaps; i++) {
+                const p = document.createElement('div');
+                p.className = `piece ${myColor === 'black' ? 'red' : 'black'}`;
+                bottomGraveyard.appendChild(p);
+            }
+            for(let i = 0; i < oppCaps; i++) {
+                const p = document.createElement('div');
+                p.className = `piece ${myColor === 'black' ? 'black' : 'red'}`;
+                topGraveyard.appendChild(p);
+            }
+        }
+
+        // --- Механика игры ---
+        function handleCellClick(r, c) {
+            if(currentTurn !== myColor || uiMenu.style.display !== 'none') return;
+
+            const myPieceCodes = (myColor === 'black') ? [1, 3] : [2, 4];
+            const clickedPiece = board[r][c];
+
+            if(myPieceCodes.includes(clickedPiece)) {
+                if(mustJumpPiece && (mustJumpPiece.r !== r || mustJumpPiece.c !== c)) return; 
+                selectedCell = {r, c};
+                calculateValidMoves(r, c);
+                drawBoard();
+                return;
+            }
+
+            if(clickedPiece === 0 && selectedCell) {
+                const move = validMoves.find(m => m.r === r && m.c === c);
+                if(move) executeMove(move);
+            }
+        }
+
+        function calculateValidMoves(r, c) {
+            validMoves = [];
+            const piece = board[r][c];
+            const isKing = piece > 2;
+            const isBlack = (piece === 1 || piece === 3);
+            const oppCodes = isBlack ? [2, 4] : [1, 3];
+let canJumpAnywhere = false;
+
+            if(!mustJumpPiece) {
+                for(let i = 0; i < 8; i++) {
+                    for(let j = 0; j < 8; j++) {
+                        if(myColor === 'black' && [1,3].includes(board[i][j]) || 
+                           myColor === 'red' && [2,4].includes(board[i][j])) {
+                            if(checkJumpsForPiece(i, j, oppCodes, board[i][j] > 2).length > 0) {
+                                canJumpAnywhere = true;
+                            }
+                        }
+                    }
+                }
+            } else {
+                canJumpAnywhere = true;
+            }
+
+            if(canJumpAnywhere) {
+                validMoves = checkJumpsForPiece(r, c, oppCodes, isKing);
+            } else {
+                let dirs = isKing ? [[-1,-1], [-1,1], [1,-1], [1,1]] : (isBlack ? [[-1,-1], [-1,1]] : [[1,-1], [1,1]]);
+                for(let d of dirs) {
+                    const nr = r + d[0], nc = c + d[1];
+                    if(inBounds(nr, nc) && board[nr][nc] === 0) {
+                        validMoves.push({r: nr, c: nc, jumpR: null, jumpC: null});
+                    }
+                }
+            }
+        }
+
+        function checkJumpsForPiece(r, c, oppCodes, isKing) {
+            let jumps = [];
+            const jumpDirs = [[-1,-1], [-1,1], [1,-1], [1,1]];
+            for(let d of jumpDirs) {
+                const nr = r + d[0], nc = c + d[1];
+                const jr = r + d[0]*2, jc = c + d[1]*2;
+                if(inBounds(jr, jc) && oppCodes.includes(board[nr][nc]) && board[jr][jc] === 0) {
+                    jumps.push({r: jr, c: jc, jumpR: nr, jumpC: nc});
+                }
+            }
+            return jumps;
+        }
+
+        function executeMove(move) {
+            const piece = board[selectedCell.r][selectedCell.c];
+            
+            board[move.r][move.c] = piece;
+            board[selectedCell.r][selectedCell.c] = 0;
+            
+            let jumped = false;
+            if(move.jumpR !== null) {
+                const deadPiece = board[move.jumpR][move.jumpC];
+                if(deadPiece === 1 || deadPiece === 3) capturedBlack++;
+                else capturedRed++;
+                
+                board[move.jumpR][move.jumpC] = 0;
+                jumped = true;
+                updateGraveyards();
+            }
+
+            let promoted = false;
+            if(piece === 1 && move.r === 0) { board[move.r][move.c] = 3; promoted = true; }
+            if(piece === 2 && move.r === 7) { board[move.r][move.c] = 4; promoted = true; }
+
+            selectedCell = null;
+            validMoves = [];
+
+            if(jumped && !promoted) {
+                const oppCodes = (myColor === 'black') ? [2, 4] : [1, 3];
+                const furtherJumps = checkJumpsForPiece(move.r, move.c, oppCodes, board[move.r][move.c] > 2);
+                
+                if(furtherJumps.length > 0) {
+                    mustJumpPiece = {r: move.r, c: move.c};
+                    selectedCell = mustJumpPiece;
+                    calculateValidMoves(move.r, move.c);
+                    drawBoard();
+                    syncState();
+                    return; 
+                }
+            }
+
+            endTurn();
+        }
+
+        function endTurn() {
+            mustJumpPiece = null;
+            currentTurn = (currentTurn === 'black') ? 'red' : 'black';
+            updateStatus();
+            drawBoard();
+            syncState();
+            checkLoseCondition();
+        }
+
+        function checkLoseCondition() {
+            let myPieces = 0, oppPieces = 0;
+            const myPieceCodes = (myColor === 'black') ? [1, 3] : [2, 4];
+            
+            for(let r = 0; r < 8; r++) {
+                for(let c = 0; c < 8; c++) {
+                    if(myPieceCodes.includes(board[r][c])) myPieces++;
+                    else if(board[r][c] !== 0) oppPieces++;
+                }
+            }
+
+            if(myPieces === 0) statusEl.innerText = 'Вы проиграли!';
+else if(oppPieces === 0) statusEl.innerText = 'Вы победили!';
+        }
+
+        function inBounds(r, c) { return r >= 0 && r < 8 && c >= 0 && c < 8; }
+
+        initEmptyBoard();
+    </script>
+</body>
+</html>
